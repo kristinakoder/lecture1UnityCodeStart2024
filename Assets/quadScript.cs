@@ -19,14 +19,16 @@ public class quadScript : MonoBehaviour {
     float red = 1, green = 1, blue = 1, step, half;
     bool checkedToggle = true;
 
-    int _iso = 20, divitions = 10;
+    int _iso = 20, divitions = 30;
 
     List<Vector3> vertices = new(); //3. tall er 0 alltid.
     List<int> indices = new(); //legger til 0 og 1, da tegnes kant fra punkt 0 til 1. Legger til 1 og 2, kant fra 1 til 2 osv...
 
-    private Button _button;
+    private Button _button, _button2;
     private Toggle _toggle;
     private Slider _slider1, _slider2, _sliderRed, _sliderGreen, _sliderBlue;
+
+    meshScript mscript;
     
 
     // Use this for initialization
@@ -34,6 +36,7 @@ public class quadScript : MonoBehaviour {
     {
         var uiDocument = GameObject.Find("MyUIDocument").GetComponent<UIDocument>();
         _button = uiDocument.rootVisualElement.Q("button1") as Button;
+        _button2 = uiDocument.rootVisualElement.Q("button2") as Button;
         _toggle = uiDocument.rootVisualElement.Q("toggle1") as Toggle;
         _slider1 = uiDocument.rootVisualElement.Q("slider1") as Slider;
         _slider2 = uiDocument.rootVisualElement.Q("slider2") as Slider;
@@ -41,6 +44,7 @@ public class quadScript : MonoBehaviour {
         _sliderGreen = uiDocument.rootVisualElement.Q("sliderG") as Slider;
         _sliderBlue = uiDocument.rootVisualElement.Q("sliderB") as Slider;
         _button.RegisterCallback<ClickEvent>(button1Pushed);
+        _button2.RegisterCallback<ClickEvent>(button2Pushed);
         _slider1.RegisterValueChangedCallback(slicePosSlider1Change);
         _slider2.RegisterValueChangedCallback(slicePosSlider2Change);
         _sliderRed.RegisterValueChangedCallback(slicePosSliderRedChange);
@@ -55,17 +59,17 @@ public class quadScript : MonoBehaviour {
         _slices = processSlices(dicomfilepath);     // loads slices from the folder above
         xdim = _slices[0].sliceInfo.Rows;
         ydim = _slices[0].sliceInfo.Columns;
-        DrawFilledCircle(red, green, blue);                     // shows the first slice
+        //DrawFilledCircle(red, green, blue);             
 
         //  gets the mesh object and uses it to create a diagonal line
-        meshScript mscript = GameObject.Find("GameObjectMesh").GetComponent<meshScript>();
-        List<Vector3> vertices = new List<Vector3>();
-        List<int> indices = new List<int>();
-        vertices.Add(new Vector3(-0.5f,-0.5f,0));
-        vertices.Add(new Vector3(0.5f,0.5f,0));
-        indices.Add(0);
-        indices.Add(1);
-        mscript.createMeshGeometry(vertices, indices);
+        mscript = GameObject.Find("GameObjectMesh").GetComponent<meshScript>();
+        //List<Vector3> vertices = new List<Vector3>();
+        //List<int> indices = new List<int>();
+        //vertices.Add(new Vector3(-0.5f,-0.5f,0));
+        //vertices.Add(new Vector3(0.5f,0.5f,0));
+        //indices.Add(0);
+        //indices.Add(1);
+        //mscript.createMeshGeometry(vertices, indices);
     }
 
     Slice[] processSlices(string dicomfilepath)
@@ -128,7 +132,7 @@ public class quadScript : MonoBehaviour {
             for (int x = 0; x < xdim; x++)
             {
                 texture.SetPixel(x, y, new UnityEngine.Color(0, 0, 0));
-                if (IsInside(x, y)) texture.SetPixel(x, y, new UnityEngine.Color(r, g, b));
+                if (IsInside(new Vector3(x, y))) texture.SetPixel(x, y, new UnityEngine.Color(r, g, b));
             }
 
         texture.filterMode = FilterMode.Point;  // nearest neigbor interpolation is used.  (alternative is FilterMode.Bilinear)
@@ -140,13 +144,11 @@ public class quadScript : MonoBehaviour {
     {
         vertices.Clear();
         indices.Clear();
-        meshScript mscript = GameObject.Find("GameObjectMesh").GetComponent<meshScript>();
         step = (float) xdim/divitions;
         half = step/2;
         for (float x = half; x < xdim; x += step)        
             for (float y = half; y < ydim; y += step)
-                //for (float z = half; z < ydim; z += step)
-            {
+                {
                 bool[] square = CheckSquares(x,y);
  
                 if (MatchPattern(square, new bool[] { true, true, true, false }))
@@ -170,44 +172,166 @@ public class quadScript : MonoBehaviour {
         mscript.createMeshGeometry(vertices, indices);
     }
 
+    bool[] CheckSquares(float x, float y)
+    {
+        return new bool[] { IsInside(Vec3(x, y)), IsInside(Vec3(x + step, y)), IsInside(Vec3(x + step, y + step)), IsInside(Vec3(x, y + step)) };
+    }
+
+    void DrawMesh() 
+    {
+        vertices.Clear();
+        indices.Clear();
+        step = (float) xdim/divitions;
+        half = step/2;
+        for (float x = half; x < xdim; x += step)        
+            for (float y = half; y < ydim; y += step)
+                for (float z = half; z < ydim; z += step)
+                {   
+                    Vector3 p0 = new(x,y+step,z);
+                    Vector3 p1 = new(x+step, y+step, z);
+                    Vector3 p2 = new(x,y,z);
+                    Vector3 p3 = new(x+step, y, z);
+                    Vector3 p4 = new(x, y+step, z+step);
+                    Vector3 p5 = new(x+step, y+step, z+step);
+                    Vector3 p6 = new(x, y, z+step);
+                    Vector3 p7 = new(x+step, y, z+step);
+
+                    CheckTetrahedras(p4, p6, p0, p7);
+                    CheckTetrahedras(p6, p0, p7, p2);
+                    CheckTetrahedras(p0, p7, p2, p3);
+                    CheckTetrahedras(p4, p5, p7, p0);
+                    CheckTetrahedras(p1, p7, p0, p3);
+                    CheckTetrahedras(p0, p5, p7, p1);
+                }
+        mscript.createMeshGeometry(vertices, indices);
+    }
+
+    void CheckTetrahedras(Vector3 a, Vector3 b, Vector3 c, Vector3 d)
+    {
+        string pattern = (IsInside(a) ? "1" : "0") + (IsInside(b) ? "1" : "0") + (IsInside(c) ? "1" : "0") + (IsInside(d) ? "1" : "0");
+        
+        switch(pattern)
+        {
+            case "0001": //p14, p24, p34   
+                AddTriangle(FindPoint(a,d), FindPoint(b,d), FindPoint(c,d)); 
+                break;
+            case "1110": //p14, p34, p24               
+                AddTriangle(FindPoint(a,d), FindPoint(c,d), FindPoint(b,d));
+                break;
+            case "0010": //p13, p34, p23
+                AddTriangle(FindPoint(a,c), FindPoint(c,d), FindPoint(b,c));
+                break; 
+            case "1101": //p13, p23, p34         
+                AddTriangle(FindPoint(a,c), FindPoint(b,c), FindPoint(c,d));
+                break;
+            case "0100": //p12, p23, p24
+                AddTriangle(FindPoint(a,b), FindPoint(b,c), FindPoint(b,d));
+                break; 
+            case "1011": // p12, p24, p23
+                AddTriangle(FindPoint(a,b), FindPoint(b,d), FindPoint(b,c));
+                break;
+            case "1000": //p12, p14, p13
+                AddTriangle(FindPoint(a,b), FindPoint(a,d), FindPoint(a,c));
+                break;
+            case "0111": //p12, p13, p14
+                AddTriangle(FindPoint(a,b), FindPoint(a,c), FindPoint(a,d));
+                break;
+            case "0011": //p13, p14, p24, p23
+                AddTriangle(FindPoint(a,c), FindPoint(a,d), FindPoint(b,d), FindPoint(b,c));
+                break;
+            case "1100": //p13, p23, p24, p14
+                AddTriangle(FindPoint(a,c), FindPoint(b,c), FindPoint(b,d), FindPoint(a,d));
+                break;
+            case "1010": //p12, p14, p34, p23
+                AddTriangle(FindPoint(a,b), FindPoint(a,d), FindPoint(c,d), FindPoint(b,c));
+                break;
+            case "0101": //p12, p23, p34, p14
+                AddTriangle(FindPoint(a,b), FindPoint(b,c), FindPoint(c,d), FindPoint(a,d));
+                break;
+            case "0110": //p12, p13, p34, p24
+                AddTriangle(FindPoint(a,b), FindPoint(a,c), FindPoint(c,d), FindPoint(b,d));
+                break;
+            case "1001": //p12, p24, p34, p13
+                AddTriangle(FindPoint(a,b), FindPoint(b,d), FindPoint(c,d), FindPoint(a,c));
+                break;
+            default:
+                break;
+        }
+    }
+
+    Vector3 FindPoint(Vector3 a, Vector3 b)
+    {
+        float v1 = FindDistance(a), v2 = FindDistance(b), v;
+        if (v1 < v2)
+        {
+            v = 1f - (_iso - v2) / (v1 - v2);
+            return Vector3.Lerp(b,a,v); 
+        } else 
+        {
+            v = 1f - (_iso - v1) / (v2 - v1);
+            return Vector3.Lerp(a,b,v);
+        }
+    }
+
     bool MatchPattern(bool[] a, bool[] b)
     {
         return a.SequenceEqual(b) || a.SequenceEqual(b.Select(b => !b).ToArray());
     }
     
-    bool IsInside(float x, float y)
+    bool IsInside(Vector3 v)
     {
-        return FindDistance(x,y) < _iso * 2;       
+        return FindDistance(v) < _iso * 2;       //TODO: Heller endre slideren enn * 2!
     }
 
-    float FindDistance(float x, float y)
+    float FindDistance(Vector3 v)
     {
-        Vector2 center = new(xdim/2, ydim/2);
-        return Vector3.Distance(new Vector2(x,y), center); //Vector3.Distance(new Vector2(x,y), center) denne verdier skal brukes mot _iso
+        Vector3 center = new(xdim/2,xdim/2,xdim/2);
+        return Vector3.Distance(v, center); //Vector3.Distance(new Vector2(x,y), center) denne verdier skal brukes mot _iso
     }
-    
-    bool[] CheckSquares(float x, float y)
+
+    void AddTriangle(Vector3 a, Vector3 b, Vector3 c)
     {
-        return new bool[] { IsInside(x, y), IsInside(x + step, y), IsInside(x + step, y + step), IsInside(x, y + step) };
+        vertices.Add(Normalize(a));
+        vertices.Add(Normalize(b));
+        vertices.Add(Normalize(c));
+        indices.Add(vertices.Count - 1);
+        indices.Add(vertices.Count - 2);
+        indices.Add(vertices.Count - 3);
+    }
+
+    void AddTriangle(Vector3 a, Vector3 b, Vector3 c, Vector3 d)
+    {
+        AddTriangle(a, b, c);
+        AddTriangle(a, c, d);
+    }
+
+    Vector3 Normalize(Vector3 a)
+    {
+        return a/xdim - Vec3(0.5f, 0.5f, 0.5f);
+    }
+
+    Vector3 Vec3(float x, float y, float z)
+    {
+        return new Vector3(x, y, z);
+    }
+
+    Vector3 Vec3(float x, float y)
+    {
+        return new Vector3(x, y);
     }
 
     void AddVertexAndIndices(float a, float b, float c, float d)
     {
         Func<float, float> normalize = (x) => x / xdim - 0.5f;
-        vertices.Add(new Vector3(normalize(a),normalize(b)));
-        vertices.Add(new Vector3(normalize(c),normalize(d)));
+        vertices.Add(Vec3(normalize(a),normalize(b)));
+        vertices.Add(Vec3(normalize(c),normalize(d)));
         indices.Add(vertices.Count - 2);
         indices.Add(vertices.Count - 1);
-    }    
+    }  
 
     ushort pixelval(Vector2 p, int xdim, ushort[] pixels)
     {
         return pixels[(int)p.x + (int)p.y * xdim];
-    }
-
-    Vector2 vec2(float x, float y)
-    {
-        return new Vector2(x, y);
     }
 
     private void OnToggleValueChanged(ChangeEvent<bool> evt)
@@ -223,7 +347,6 @@ public class quadScript : MonoBehaviour {
         _slider1.value = evt.newValue;
         _iso = (int) evt.newValue;
         DrawFilledCircle(red, green, blue);
-        DrawCircleByPoints();
         } else {
             //int n = _slices.Length;
             int n = (int) _slider2.value - 2; //for å teste (begynner på 3).
@@ -237,7 +360,7 @@ public class quadScript : MonoBehaviour {
     {
         _slider2.value = evt.newValue;
         divitions = (int) _slider2.value;
-        DrawCircleByPoints();
+        //DrawCircleByPoints();
     }
     
     private void slicePosSliderRedChange(ChangeEvent<float> evt)
@@ -267,14 +390,12 @@ public class quadScript : MonoBehaviour {
     
     public void button1Pushed(ClickEvent evt)
     {
-        
-        print("button1Pushed"); 
-        
+        DrawMesh(); 
     }
 
-    public void button2Pushed()
+    public void button2Pushed(ClickEvent evt)
     {
-          print("button2Pushed"); 
+        mscript.MeshToFile("test.obj");
+        print("button2Pushed"); 
     }
-
 }

@@ -27,9 +27,9 @@ public class meshScript : MonoBehaviour
      
         // https://docs.unity3d.com/ScriptReference/MeshTopology.html
         // mesh.SetIndices(Triangles.ToArray(), MeshTopology.Points, 0);
-        mesh.SetIndices(indices.ToArray(), MeshTopology.Lines, 0);
+        // mesh.SetIndices(indices.ToArray(), MeshTopology.Lines, 0);
         // mesh.SetIndices(indices.ToArray(), MeshTopology.LineStrip, 0); 
-        // mesh.SetIndices(indices.ToArray(), MeshTopology.Triangles, 0);
+        mesh.SetIndices(indices.ToArray(), MeshTopology.Triangles, 0);
      
 
         // mesh.MarkDynamic();  // https://docs.unity3d.com/ScriptReference/Mesh.MarkDynamic.html
