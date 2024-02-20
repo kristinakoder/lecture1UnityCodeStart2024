@@ -261,6 +261,7 @@ public class quadScript : MonoBehaviour {
 
     Vector3 FindPoint(Vector3 a, Vector3 b)
     {
+        return (a+b)/2;
         float v1 = FindDistance(a), v2 = FindDistance(b), v;
         if (v1 < v2)
         {
