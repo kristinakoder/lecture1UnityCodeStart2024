@@ -132,7 +132,7 @@ public class quadScript : MonoBehaviour {
             for (int x = 0; x < xdim; x++)
             {
                 texture.SetPixel(x, y, new UnityEngine.Color(0, 0, 0));
-                if (IsInside(new Vector3(x, y))) texture.SetPixel(x, y, new UnityEngine.Color(r, g, b));
+                if (IsInside(new Vector3(x,0, y))) texture.SetPixel(x, y, new UnityEngine.Color(r, g, b));
             }
 
         texture.filterMode = FilterMode.Point;  // nearest neigbor interpolation is used.  (alternative is FilterMode.Bilinear)
@@ -196,82 +196,74 @@ public class quadScript : MonoBehaviour {
                     Vector3 p6 = new(x, y, z+step);
                     Vector3 p7 = new(x+step, y, z+step);
 
-                    CheckTetrahedras(p4, p6, p0, p7);
-                    CheckTetrahedras(p6, p0, p7, p2);
-                    CheckTetrahedras(p0, p7, p2, p3);
-                    CheckTetrahedras(p4, p5, p7, p0);
-                    CheckTetrahedras(p1, p7, p0, p3);
-                    CheckTetrahedras(p0, p5, p7, p1);
+                    DoTetras(p4, p6, p0, p7);
+                    DoTetras(p6, p0, p7, p2);
+                    DoTetras(p0, p7, p2, p3);
+                    DoTetras(p4, p5, p7, p0);
+                    DoTetras(p1, p7, p0, p3);
+                    DoTetras(p0, p5, p7, p1);
                 }
         mscript.createMeshGeometry(vertices, indices);
     }
 
-    void CheckTetrahedras(Vector3 a, Vector3 b, Vector3 c, Vector3 d)
+    void DoTetras(Vector3 v1, Vector3 v2, Vector3 v3, Vector3 v4)
     {
-        string pattern = (IsInside(a) ? "1" : "0") + (IsInside(b) ? "1" : "0") + (IsInside(c) ? "1" : "0") + (IsInside(d) ? "1" : "0");
+        string pattern = (IsInside(v1) ? "1" : "0") + (IsInside(v2) ? "1" : "0") + (IsInside(v3) ? "1" : "0") + (IsInside(v4) ? "1" : "0");
         
         switch(pattern)
         {
             case "0001": //p14, p24, p34   
-                AddTriangle(FindPoint(a,d), FindPoint(b,d), FindPoint(c,d)); 
+                AddTriangle(v1, v4, v2, v4, v3, v4); 
                 break;
             case "1110": //p14, p34, p24               
-                AddTriangle(FindPoint(a,d), FindPoint(c,d), FindPoint(b,d));
+                AddTriangle(v1, v4, v3, v4, v2, v4);
                 break;
             case "0010": //p13, p34, p23
-                AddTriangle(FindPoint(a,c), FindPoint(c,d), FindPoint(b,c));
+                AddTriangle(v1, v3, v3, v4, v2, v3);
                 break; 
             case "1101": //p13, p23, p34         
-                AddTriangle(FindPoint(a,c), FindPoint(b,c), FindPoint(c,d));
+                AddTriangle(v1, v3, v2, v3, v3, v4);
                 break;
             case "0100": //p12, p23, p24
-                AddTriangle(FindPoint(a,b), FindPoint(b,c), FindPoint(b,d));
+                AddTriangle(v1, v2, v2, v3, v2, v4);
                 break; 
             case "1011": // p12, p24, p23
-                AddTriangle(FindPoint(a,b), FindPoint(b,d), FindPoint(b,c));
+                AddTriangle(v1, v2, v2, v4, v2, v3);
                 break;
             case "1000": //p12, p14, p13
-                AddTriangle(FindPoint(a,b), FindPoint(a,d), FindPoint(a,c));
+                AddTriangle(v1, v2, v1, v4, v1, v3);
                 break;
             case "0111": //p12, p13, p14
-                AddTriangle(FindPoint(a,b), FindPoint(a,c), FindPoint(a,d));
+                AddTriangle(v1, v2, v1, v3, v1, v4);
                 break;
             case "0011": //p13, p14, p24, p23
-                AddTriangle(FindPoint(a,c), FindPoint(a,d), FindPoint(b,d), FindPoint(b,c));
+                AddTriangle(v1, v3, v1, v4, v2, v4, v2, v3);
                 break;
             case "1100": //p13, p23, p24, p14
-                AddTriangle(FindPoint(a,c), FindPoint(b,c), FindPoint(b,d), FindPoint(a,d));
+                AddTriangle(v1, v3, v2, v3, v2, v4, v1, v4);
                 break;
             case "1010": //p12, p14, p34, p23
-                AddTriangle(FindPoint(a,b), FindPoint(a,d), FindPoint(c,d), FindPoint(b,c));
+                AddTriangle(v1, v2, v1, v4, v3, v4, v2, v3);
                 break;
             case "0101": //p12, p23, p34, p14
-                AddTriangle(FindPoint(a,b), FindPoint(b,c), FindPoint(c,d), FindPoint(a,d));
+                AddTriangle(v1, v2, v2, v3, v3, v4, v1, v4);
                 break;
             case "0110": //p12, p13, p34, p24
-                AddTriangle(FindPoint(a,b), FindPoint(a,c), FindPoint(c,d), FindPoint(b,d));
+                AddTriangle(v1, v2, v1, v3, v3, v4, v2, v4);
                 break;
             case "1001": //p12, p24, p34, p13
-                AddTriangle(FindPoint(a,b), FindPoint(b,d), FindPoint(c,d), FindPoint(a,c));
+                AddTriangle(v1, v2, v2, v4, v3, v4, v1, v3);
                 break;
             default:
                 break;
         }
     }
 
-    Vector3 FindPoint(Vector3 a, Vector3 b)
+    Vector3 FindVertex(Vector3 a, Vector3 b) //denne er ikke rett??
     {
-        return (a+b)/2;
-        float v1 = FindDistance(a), v2 = FindDistance(b), v;
-        if (v1 < v2)
-        {
-            v = 1f - (_iso - v2) / (v1 - v2);
-            return Vector3.Lerp(b,a,v); 
-        } else 
-        {
-            v = 1f - (_iso - v1) / (v2 - v1);
-            return Vector3.Lerp(a,b,v);
-        }
+        float v1 = FindDistance(a), v2 = FindDistance(b);
+        float weight = Mathf.Abs(_iso - v1) / Mathf.Abs(v1-v2);
+        return Vector3.Lerp(a,b,weight);
     }
 
     bool MatchPattern(bool[] a, bool[] b)
@@ -281,7 +273,7 @@ public class quadScript : MonoBehaviour {
     
     bool IsInside(Vector3 v)
     {
-        return FindDistance(v) < _iso * 2;       //TODO: Heller endre slideren enn * 2!
+        return FindDistance(v) < _iso;
     }
 
     float FindDistance(Vector3 v)
@@ -290,20 +282,20 @@ public class quadScript : MonoBehaviour {
         return Vector3.Distance(v, center); //Vector3.Distance(new Vector2(x,y), center) denne verdier skal brukes mot _iso
     }
 
-    void AddTriangle(Vector3 a, Vector3 b, Vector3 c)
+    void AddTriangle(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 e, Vector3 f)
     {
-        vertices.Add(Normalize(a));
-        vertices.Add(Normalize(b));
-        vertices.Add(Normalize(c));
+        vertices.Add(Normalize(FindVertex(a,b)));
+        vertices.Add(Normalize(FindVertex(c,d)));
+        vertices.Add(Normalize(FindVertex(e,f)));
         indices.Add(vertices.Count - 1);
         indices.Add(vertices.Count - 2);
         indices.Add(vertices.Count - 3);
     }
 
-    void AddTriangle(Vector3 a, Vector3 b, Vector3 c, Vector3 d)
+    void AddTriangle(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 e, Vector3 f, Vector3 g, Vector3 h)
     {
-        AddTriangle(a, b, c);
-        AddTriangle(a, c, d);
+        AddTriangle(a, b, c, d, e, f);
+        AddTriangle(a, b, e, f, g, h);  
     }
 
     Vector3 Normalize(Vector3 a)
@@ -396,7 +388,6 @@ public class quadScript : MonoBehaviour {
 
     public void button2Pushed(ClickEvent evt)
     {
-        mscript.MeshToFile("test.obj");
-        print("button2Pushed"); 
+        mscript.MeshToFile("test.obj", ref vertices, ref indices);
     }
 }
