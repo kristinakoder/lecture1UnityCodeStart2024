@@ -1,12 +1,10 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
     <ui:VisualElement style="flex-grow: 1; align-self: auto;">
         <ui:Button text="Draw mesh" display-tooltip-when-elided="true" name="button1" data-source="project://database/Assets/UI%20Toolkit/UnityThemes/UnityDefaultRuntimeTheme.tss?fileID=4413694071827464959&amp;guid=3dda5d08aec430c438934fbbaecd3d39&amp;type=3#default" style="position: absolute; top: 11px; left: 5px;" />
-        <ui:Button text="Save" display-tooltip-when-elided="true" name="button2" data-source="project://database/Assets/UI%20Toolkit/UnityThemes/UnityDefaultRuntimeTheme.tss?fileID=4413694071827464959&amp;guid=3dda5d08aec430c438934fbbaecd3d39&amp;type=3#default" style="position: absolute; top: 58px; left: 3px;" />
-        <ui:Toggle label="A toggle" name="toggle1" style="position: absolute; top: 195px; left: 11px;" />
-        <ui:Slider label="Slider1" value="42" high-value="200" name="slider1" low-value="20" style="position: absolute; top: 114px; left: 5px; width: 286px; flex-direction: row; align-items: center; justify-content: space-between; height: 34px;" />
+        <ui:Button text="Save" display-tooltip-when-elided="true" name="button2" data-source="project://database/Assets/UI%20Toolkit/UnityThemes/UnityDefaultRuntimeTheme.tss?fileID=4413694071827464959&amp;guid=3dda5d08aec430c438934fbbaecd3d39&amp;type=3#default" style="position: absolute; top: 59px; left: 5px;" />
+        <ui:Toggle label="A toggle" name="toggle1" style="position: absolute; top: 220px; left: 7px;" />
+        <ui:Slider label="Slider1" value="1000" high-value="4000" name="slider1" low-value="0" style="position: absolute; top: 114px; left: 5px; width: 286px; flex-direction: row; align-items: center; justify-content: space-between; height: 34px;" />
         <ui:Slider label="Slider2" value="42" high-value="256" name="slider2" low-value="3" style="position: absolute; top: 151px; left: 6px; width: 286px; flex-direction: row; align-items: center; justify-content: space-between;" />
-        <ui:Slider label="Red" value="42" high-value="1" name="sliderR" low-value="0" style="position: absolute; top: 250px; left: 6px; width: 286px; flex-direction: row; align-items: center; justify-content: space-between; align-self: auto;" />
-        <ui:Slider label="Green" value="42" high-value="1" name="sliderG" low-value="0" style="position: absolute; top: 290px; left: 6px; width: 286px; flex-direction: row; align-items: center; justify-content: space-between; align-self: auto;" />
-        <ui:Slider label="Blue" value="42" high-value="1" name="sliderB" low-value="0" style="position: absolute; top: 330px; left: 6px; width: 286px; flex-direction: row; align-items: center; justify-content: space-between; align-self: auto;" />
+        <ui:Slider label="Layer" value="42" high-value="353" name="sliderR" low-value="0" style="position: absolute; top: 186px; left: 6px; width: 286px; flex-direction: row; align-items: center; justify-content: space-between; align-self: auto; height: 32px;" />
     </ui:VisualElement>
 </ui:UXML>

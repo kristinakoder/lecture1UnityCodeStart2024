@@ -14,23 +14,23 @@ public class quadScript : MonoBehaviour {
     
     // member variables of quadScript, accessible from any function
     Slice[] _slices;
-    int _numSlices, _minIntensity, _maxIntensity, xdim, ydim;
+    int _numSlices, _minIntensity, _maxIntensity, xdim, ydim, zdim;
 
-    float red = 1, green = 1, blue = 1, step, half;
+    float _iso = 0.8f;
     bool checkedToggle = true;
 
-    int _iso = 20, divitions = 30;
+    int _radius = 20, divitions = 30;
 
-    List<Vector3> vertices = new(); //3. tall er 0 alltid.
-    List<int> indices = new(); //legger til 0 og 1, da tegnes kant fra punkt 0 til 1. Legger til 1 og 2, kant fra 1 til 2 osv...
+    List<Vector3> vertices = new();
+    List<int> indices = new(); 
 
     private Button _button, _button2;
     private Toggle _toggle;
-    private Slider _slider1, _slider2, _sliderRed, _sliderGreen, _sliderBlue;
+    private Slider _slider1, _slider2, _sliderRed;
 
     meshScript mscript;
     
-
+    Texture2D texture;
     // Use this for initialization
     void Start () 
     {
@@ -41,16 +41,13 @@ public class quadScript : MonoBehaviour {
         _slider1 = uiDocument.rootVisualElement.Q("slider1") as Slider;
         _slider2 = uiDocument.rootVisualElement.Q("slider2") as Slider;
         _sliderRed = uiDocument.rootVisualElement.Q("sliderR") as Slider;
-        _sliderGreen = uiDocument.rootVisualElement.Q("sliderG") as Slider;
-        _sliderBlue = uiDocument.rootVisualElement.Q("sliderB") as Slider;
         _button.RegisterCallback<ClickEvent>(button1Pushed);
         _button2.RegisterCallback<ClickEvent>(button2Pushed);
         _slider1.RegisterValueChangedCallback(slicePosSlider1Change);
         _slider2.RegisterValueChangedCallback(slicePosSlider2Change);
         _sliderRed.RegisterValueChangedCallback(slicePosSliderRedChange);
-        _sliderGreen.RegisterValueChangedCallback(slicePosSliderGreenChange);
-        _sliderBlue.RegisterValueChangedCallback(slicePosSliderBlueChange);
         _toggle.RegisterValueChangedCallback(OnToggleValueChanged);
+        texture = new Texture2D(512, 512, TextureFormat.RGB24, false);
 
         Slice.initDicom();
 
@@ -59,17 +56,9 @@ public class quadScript : MonoBehaviour {
         _slices = processSlices(dicomfilepath);     // loads slices from the folder above
         xdim = _slices[0].sliceInfo.Rows;
         ydim = _slices[0].sliceInfo.Columns;
-        //DrawFilledCircle(red, green, blue);             
+        zdim = _slices.Length;           
 
-        //  gets the mesh object and uses it to create a diagonal line
         mscript = GameObject.Find("GameObjectMesh").GetComponent<meshScript>();
-        //List<Vector3> vertices = new List<Vector3>();
-        //List<int> indices = new List<int>();
-        //vertices.Add(new Vector3(-0.5f,-0.5f,0));
-        //vertices.Add(new Vector3(0.5f,0.5f,0));
-        //indices.Add(0);
-        //indices.Add(1);
-        //mscript.createMeshGeometry(vertices, indices);
     }
 
     Slice[] processSlices(string dicomfilepath)
@@ -98,7 +87,6 @@ public class quadScript : MonoBehaviour {
 
         _minIntensity = (int)min;
         _maxIntensity = (int)max;
-        //_iso = 0;
 
         Array.Sort(slices);
         
@@ -106,9 +94,7 @@ public class quadScript : MonoBehaviour {
     }
 
     void setTexture(Slice slice)
-    {        
-        var texture = new Texture2D(xdim, ydim, TextureFormat.RGB24, false);     // garbage collector will tackle that it is new'ed 
-
+    { 
         ushort[] pixels = slice.getPixels();
         
         for (int y = 0; y < ydim; y++)
@@ -123,16 +109,19 @@ public class quadScript : MonoBehaviour {
         texture.Apply();  // Apply all SetPixel calls
         GetComponent<Renderer>().material.mainTexture = texture;
     }
+ 
+    ushort pixelval(Vector2 p, int xdim, ushort[] pixels)
+    {
+        return pixels[(int)p.x + (int)p.y * xdim];
+    }
 
     void DrawFilledCircle(float r, float g, float b) 
-    {        
-        var texture = new Texture2D(xdim, ydim, TextureFormat.RGB24, false); // garbage collector will tackle that it is new'ed 
-        
+    {                
         for (int y = 0; y < ydim; y++)
             for (int x = 0; x < xdim; x++)
             {
                 texture.SetPixel(x, y, new UnityEngine.Color(0, 0, 0));
-                if (IsInside(new Vector3(x,0, y))) texture.SetPixel(x, y, new UnityEngine.Color(r, g, b));
+                if (IsInside(new Vector3(x, y))) texture.SetPixel(x, y, new UnityEngine.Color(r, g, b));
             }
 
         texture.filterMode = FilterMode.Point;  // nearest neigbor interpolation is used.  (alternative is FilterMode.Bilinear)
@@ -140,61 +129,69 @@ public class quadScript : MonoBehaviour {
         GetComponent<Renderer>().material.mainTexture = texture;
     }
 
-    void DrawCircleByPoints() 
+    void DrawByPoints() 
     {
         vertices.Clear();
         indices.Clear();
-        step = (float) xdim/divitions;
-        half = step/2;
+        float step = (float) xdim/divitions;
+        float half = step/2;
         for (float x = half; x < xdim; x += step)        
             for (float y = half; y < ydim; y += step)
                 {
-                bool[] square = CheckSquares(x,y);
- 
-                if (MatchPattern(square, new bool[] { true, true, true, false }))
-                    AddVertexAndIndices(x, y+half, x+half, y+step);
-                
-                if (MatchPattern(square, new bool[] { true, true, false, true }))
-                    AddVertexAndIndices(x+step, y+half, x+half, y+step);
+                Vector3 v1 = Vec3(x,y);
+                Vector3 v2 = Vec3(x + step, y);
+                Vector3 v3 = Vec3(x + step, y + step);
+                Vector3 v4 = Vec3(x, y + step);
 
-                if (MatchPattern(square, new bool[] { true, true, false, false }))
-                    AddVertexAndIndices(x, y+half, x+step, y+half);
+                string pattern = (IsInside(v1) ? "1" : "0") + (IsInside(v2) ? "1" : "0") + (IsInside(v3) ? "1" : "0") + (IsInside(v4) ? "1" : "0");
 
-                if (MatchPattern(square, new bool[] { false, true, true, true })) 
-                    AddVertexAndIndices(x+half, y, x, y+half);
-
-                if (MatchPattern(square, new bool[] { false, true, true, false })) 
-                    AddVertexAndIndices(x+half, y, x+half, y+step);
-                
-                if (MatchPattern(square, new bool[] { false, true, false, false })) 
-                    AddVertexAndIndices(x+half, y, x+step, y+half);
+                switch (pattern)
+                {
+                    case "1110": case "0001":  //{ true, true, true, false }                  
+                        AddVertexAndIndices(x, y+half, x+half, y+step);
+                        break;
+                    case "1101": case "0010": //{ true, true, false, true }
+                        AddVertexAndIndices(x+step, y+half, x+half, y+step);
+                        break;
+                    case "1100": case "0011": // { true, true, false, false }
+                         AddVertexAndIndices(x, y+half, x+step, y+half);
+                         break;
+                    case "0111": case "1000": //{ false, true, true, true }
+                        AddVertexAndIndices(x+half, y, x, y+half);
+                        break;
+                    case "0110": case "1001": //{ false, true, true, false }
+                        AddVertexAndIndices(x+half, y, x+half, y+step);
+                        break;
+                    case "0100": case "1011": //{ false, true, false, false }
+                        AddVertexAndIndices(x+half, y, x+step, y+half);
+                        break;
+                    default:
+                        break;
+                }
             } 
         mscript.createMeshGeometry(vertices, indices);
     }
 
-    bool[] CheckSquares(float x, float y)
-    {
-        return new bool[] { IsInside(Vec3(x, y)), IsInside(Vec3(x + step, y)), IsInside(Vec3(x + step, y + step)), IsInside(Vec3(x, y + step)) };
-    }
-
-    void DrawMesh() 
+    void CreateMesh() 
     {
         vertices.Clear();
         indices.Clear();
-        step = (float) xdim/divitions;
-        half = step/2;
-        for (float x = half; x < xdim; x += step)        
-            for (float y = half; y < ydim; y += step)
-                for (float z = half; z < ydim; z += step)
+        float zstep = (float) zdim/divitions;
+        float zhalf = (float) zstep/2;
+        float step = (float) xdim/divitions;
+        float half = (float) step/2;
+        for (float x = - half; x < xdim + step; x += step)        
+            for (float y = - half; y < ydim + step; y += step)        
+                for (float z = - zhalf; z < zdim + zstep; z += zstep)          
                 {   
                     Vector3 p0 = new(x,y+step,z);
                     Vector3 p1 = new(x+step, y+step, z);
                     Vector3 p2 = new(x,y,z);
                     Vector3 p3 = new(x+step, y, z);
-                    Vector3 p4 = new(x, y+step, z+step);
-                    Vector3 p5 = new(x+step, y+step, z+step);
-                    Vector3 p6 = new(x, y, z+step);
-                    Vector3 p7 = new(x+step, y, z+step);
+                    Vector3 p4 = new(x, y+step, z+zstep);
+                    Vector3 p5 = new(x+step, y+step, z+zstep);
+                    Vector3 p6 = new(x, y, z+zstep);
+                    Vector3 p7 = new(x+step, y, z+zstep);
 
                     DoTetras(p4, p6, p0, p7);
                     DoTetras(p6, p0, p7, p2);
@@ -203,12 +200,12 @@ public class quadScript : MonoBehaviour {
                     DoTetras(p1, p7, p0, p3);
                     DoTetras(p0, p5, p7, p1);
                 }
-        mscript.createMeshGeometry(vertices, indices);
+        
     }
 
     void DoTetras(Vector3 v1, Vector3 v2, Vector3 v3, Vector3 v4)
     {
-        string pattern = (IsInside(v1) ? "1" : "0") + (IsInside(v2) ? "1" : "0") + (IsInside(v3) ? "1" : "0") + (IsInside(v4) ? "1" : "0");
+        string pattern = (UnderIso(v1) ? "1" : "0") + (UnderIso(v2) ? "1" : "0") + (UnderIso(v3) ? "1" : "0") + (UnderIso(v4) ? "1" : "0");
         
         switch(pattern)
         {
@@ -259,11 +256,24 @@ public class quadScript : MonoBehaviour {
         }
     }
 
-    Vector3 FindVertex(Vector3 a, Vector3 b) //denne er ikke rett??
+    Vector3 Interpolate(Vector3 a, Vector3 b)
     {
-        float v1 = FindDistance(a), v2 = FindDistance(b);
+        float v1 = FindIso(a), v2 = FindIso(b);
         float weight = Mathf.Abs(_iso - v1) / Mathf.Abs(v1-v2);
         return Vector3.Lerp(a,b,weight);
+    }
+
+    bool UnderIso(Vector3 v)
+    {
+        return FindIso(v) < _iso;
+    }
+
+    float FindIso(Vector3 v)
+    {
+        if (v.x < 0 || v.y < 0 || v.z < 0 || v.z > 354 || v.x > 512 || v.y > 512) return 0;
+        ushort[] pixels = _slices[(int) v.z].getPixels(); //føles litt teit at denne skal kalles unødvendig mange ganger
+        int pos = (int)v.x + (int)v.y * xdim;
+        return pixels[pos];
     }
 
     bool MatchPattern(bool[] a, bool[] b)
@@ -273,7 +283,7 @@ public class quadScript : MonoBehaviour {
     
     bool IsInside(Vector3 v)
     {
-        return FindDistance(v) < _iso;
+        return FindDistance(v) < _radius;
     }
 
     float FindDistance(Vector3 v)
@@ -284,12 +294,12 @@ public class quadScript : MonoBehaviour {
 
     void AddTriangle(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 e, Vector3 f)
     {
-        vertices.Add(Normalize(FindVertex(a,b)));
-        vertices.Add(Normalize(FindVertex(c,d)));
-        vertices.Add(Normalize(FindVertex(e,f)));
-        indices.Add(vertices.Count - 1);
-        indices.Add(vertices.Count - 2);
+        vertices.Add(Normalize(Interpolate(a,b)));
+        vertices.Add(Normalize(Interpolate(c,d)));
+        vertices.Add(Normalize(Interpolate(e,f)));
         indices.Add(vertices.Count - 3);
+        indices.Add(vertices.Count - 2);
+        indices.Add(vertices.Count - 1);
     }
 
     void AddTriangle(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 e, Vector3 f, Vector3 g, Vector3 h)
@@ -300,6 +310,7 @@ public class quadScript : MonoBehaviour {
 
     Vector3 Normalize(Vector3 a)
     {
+        a.z *= (float) xdim/zdim;
         return a/xdim - Vec3(0.5f, 0.5f, 0.5f);
     }
 
@@ -320,11 +331,6 @@ public class quadScript : MonoBehaviour {
         vertices.Add(Vec3(normalize(c),normalize(d)));
         indices.Add(vertices.Count - 2);
         indices.Add(vertices.Count - 1);
-    }  
-
-    ushort pixelval(Vector2 p, int xdim, ushort[] pixels)
-    {
-        return pixels[(int)p.x + (int)p.y * xdim];
     }
 
     private void OnToggleValueChanged(ChangeEvent<bool> evt)
@@ -335,59 +341,31 @@ public class quadScript : MonoBehaviour {
        
     public void slicePosSlider1Change(ChangeEvent<float> evt)
     {
-        if (checkedToggle) 
-        {
         _slider1.value = evt.newValue;
-        _iso = (int) evt.newValue;
-        DrawFilledCircle(red, green, blue);
-        } else {
-            //int n = _slices.Length;
-            int n = (int) _slider2.value - 2; //for å teste (begynner på 3).
-            int total = (int) (n * (_slider1.value + 0.9) / 100);
-            print("n: " + n + ". value: " + _slider1.value + ". Total: " + total);
-            //setTexture(_slices[(int) (_slider1.value * n) / 100]);
-        } //finn elegant løsning for å få med første og siste, men begynner på 0....
+        _iso = evt.newValue;
     }    
     
     public void slicePosSlider2Change(ChangeEvent<float> evt)
     {
         _slider2.value = evt.newValue;
         divitions = (int) _slider2.value;
-        //DrawCircleByPoints();
     }
     
     private void slicePosSliderRedChange(ChangeEvent<float> evt)
     {
-        red = evt.newValue;
-        DrawFilledCircle(red, green, blue);
-    }
-
-    
-    private void slicePosSliderGreenChange(ChangeEvent<float> evt)
-    {
-        green = evt.newValue;
-        DrawFilledCircle(red, green, blue);
-    }
-
-    
-    private void slicePosSliderBlueChange(ChangeEvent<float> evt)
-    {
-        blue = evt.newValue;
-        DrawFilledCircle(red, green, blue);
-    }
-   
-    public void sliceIsoSliderChange(float val)
-    {
-        print("sliceIsoSliderChange:" + val); 
+        int n = (int) evt.newValue;
+        setTexture(_slices[n]);
     }
     
     public void button1Pushed(ClickEvent evt)
     {
-        DrawMesh(); 
+        CreateMesh(); 
+        mscript.createMeshGeometry(vertices, indices);
     }
 
     public void button2Pushed(ClickEvent evt)
     {
+        CreateMesh(); 
         mscript.MeshToFile("test.obj", ref vertices, ref indices);
     }
 }
