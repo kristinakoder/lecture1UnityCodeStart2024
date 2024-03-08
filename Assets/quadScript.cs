@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Data;
+using System.Diagnostics;
 
 public class quadScript : MonoBehaviour {
 
@@ -14,51 +15,49 @@ public class quadScript : MonoBehaviour {
     
     // member variables of quadScript, accessible from any function
     Slice[] _slices;
-    int _numSlices, _minIntensity, _maxIntensity, xdim, ydim, zdim;
+    int _numSlices, _minIntensity, _maxIntensity, _xdim, _ydim, _zdim, _step = 4;
 
     float _iso = 0.8f;
     bool checkedToggle = true;
 
-    int _radius = 20, divitions = 30;
+    List<Vector3> _vertices = new();
+    List<int> _indices = new(); 
 
-    List<Vector3> vertices = new();
-    List<int> indices = new(); 
-
-    private Button _button, _button2;
+    private Button _buttonDraw, _buttonSave;
     private Toggle _toggle;
-    private Slider _slider1, _slider2, _sliderRed;
+    private Slider _sliderIso, _sliderStepsize, _sliderLayer;
 
-    meshScript mscript;
+    meshScript _mscript;
     
-    Texture2D texture;
+    Texture2D _texture;
     // Use this for initialization
     void Start () 
     {
         var uiDocument = GameObject.Find("MyUIDocument").GetComponent<UIDocument>();
-        _button = uiDocument.rootVisualElement.Q("button1") as Button;
-        _button2 = uiDocument.rootVisualElement.Q("button2") as Button;
+        _buttonDraw = uiDocument.rootVisualElement.Q("buttonDraw") as Button;
+        _buttonSave = uiDocument.rootVisualElement.Q("buttonSave") as Button;
         _toggle = uiDocument.rootVisualElement.Q("toggle1") as Toggle;
-        _slider1 = uiDocument.rootVisualElement.Q("slider1") as Slider;
-        _slider2 = uiDocument.rootVisualElement.Q("slider2") as Slider;
-        _sliderRed = uiDocument.rootVisualElement.Q("sliderR") as Slider;
-        _button.RegisterCallback<ClickEvent>(button1Pushed);
-        _button2.RegisterCallback<ClickEvent>(button2Pushed);
-        _slider1.RegisterValueChangedCallback(slicePosSlider1Change);
-        _slider2.RegisterValueChangedCallback(slicePosSlider2Change);
-        _sliderRed.RegisterValueChangedCallback(slicePosSliderRedChange);
+        _sliderIso = uiDocument.rootVisualElement.Q("sliderIso") as Slider;
+        _sliderStepsize = uiDocument.rootVisualElement.Q("sliderStepsize") as Slider;
+        _sliderLayer = uiDocument.rootVisualElement.Q("sliderLayer") as Slider;
+        _buttonDraw.RegisterCallback<ClickEvent>(buttonDrawPushed);
+        _buttonSave.RegisterCallback<ClickEvent>(buttonSavePushed);
+        _sliderIso.RegisterValueChangedCallback(slicePosSliderIsoChange);
+        _sliderStepsize.RegisterValueChangedCallback(slicePosSliderStepsizeChange);
+        _sliderLayer.RegisterValueChangedCallback(slicePosSliderLayerChange);
         _toggle.RegisterValueChangedCallback(OnToggleValueChanged);
-        texture = new Texture2D(512, 512, TextureFormat.RGB24, false);
+        _texture = new Texture2D(512, 512, TextureFormat.RGB24, false);
 
         Slice.initDicom();
 
         string dicomfilepath = Application.dataPath + @"\..\dicomdata\"; // Application.dataPath is in the assets folder, but these files are "managed", so we go one level up
    
         _slices = processSlices(dicomfilepath);     // loads slices from the folder above
-        xdim = _slices[0].sliceInfo.Rows;
-        ydim = _slices[0].sliceInfo.Columns;
-        zdim = _slices.Length;           
+        _xdim = _slices[0].sliceInfo.Rows;
+        _ydim = _slices[0].sliceInfo.Columns;
+        _zdim = _slices.Length;           
 
-        mscript = GameObject.Find("GameObjectMesh").GetComponent<meshScript>();
+        _mscript = GameObject.Find("GameObjectMesh").GetComponent<meshScript>();
     }
 
     Slice[] processSlices(string dicomfilepath)
@@ -81,9 +80,6 @@ public class quadScript : MonoBehaviour {
             // alternativet er å dele på 2^dicombitdepth,  men det ville blitt 4096 i dette tilfelle
 
         }
-        print("Number of slices read:" + _numSlices);
-        print("Max intensity in all slices:" + max);
-        print("Min intensity in all slices:" + min);
 
         _minIntensity = (int)min;
         _maxIntensity = (int)max;
@@ -97,17 +93,17 @@ public class quadScript : MonoBehaviour {
     { 
         ushort[] pixels = slice.getPixels();
         
-        for (int y = 0; y < ydim; y++)
-            for (int x = 0; x < xdim; x++)
+        for (int y = 0; y < _ydim; y++)
+            for (int x = 0; x < _xdim; x++)
             {
-                float val = pixelval(new Vector2(x, y), xdim, pixels);
+                float val = pixelval(new Vector2(x, y), _xdim, pixels);
                 float v = (val-_minIntensity) / _maxIntensity;      // maps [_minIntensity,_maxIntensity] to [0,1] , i.e.  _minIntensity to black and _maxIntensity to white
-                texture.SetPixel(x, y, new UnityEngine.Color(v, v, v));
+                _texture.SetPixel(x, y, new UnityEngine.Color(v, v, v));
             }
 
-        texture.filterMode = FilterMode.Point;  // nearest neigbor interpolation is used.  (alternative is FilterMode.Bilinear)
-        texture.Apply();  // Apply all SetPixel calls
-        GetComponent<Renderer>().material.mainTexture = texture;
+        _texture.filterMode = FilterMode.Point;  // nearest neigbor interpolation is used.  (alternative is FilterMode.Bilinear)
+        _texture.Apply();  // Apply all SetPixel calls
+        GetComponent<Renderer>().material.mainTexture = _texture;
     }
  
     ushort pixelval(Vector2 p, int xdim, ushort[] pixels)
@@ -115,83 +111,22 @@ public class quadScript : MonoBehaviour {
         return pixels[(int)p.x + (int)p.y * xdim];
     }
 
-    void DrawFilledCircle(float r, float g, float b) 
-    {                
-        for (int y = 0; y < ydim; y++)
-            for (int x = 0; x < xdim; x++)
-            {
-                texture.SetPixel(x, y, new UnityEngine.Color(0, 0, 0));
-                if (IsInside(new Vector3(x, y))) texture.SetPixel(x, y, new UnityEngine.Color(r, g, b));
-            }
-
-        texture.filterMode = FilterMode.Point;  // nearest neigbor interpolation is used.  (alternative is FilterMode.Bilinear)
-        texture.Apply();  // Apply all SetPixel calls
-        GetComponent<Renderer>().material.mainTexture = texture;
-    }
-
-    void DrawByPoints() 
-    {
-        vertices.Clear();
-        indices.Clear();
-        float step = (float) xdim/divitions;
-        float half = step/2;
-        for (float x = half; x < xdim; x += step)        
-            for (float y = half; y < ydim; y += step)
-                {
-                Vector3 v1 = Vec3(x,y);
-                Vector3 v2 = Vec3(x + step, y);
-                Vector3 v3 = Vec3(x + step, y + step);
-                Vector3 v4 = Vec3(x, y + step);
-
-                string pattern = (IsInside(v1) ? "1" : "0") + (IsInside(v2) ? "1" : "0") + (IsInside(v3) ? "1" : "0") + (IsInside(v4) ? "1" : "0");
-
-                switch (pattern)
-                {
-                    case "1110": case "0001":  //{ true, true, true, false }                  
-                        AddVertexAndIndices(x, y+half, x+half, y+step);
-                        break;
-                    case "1101": case "0010": //{ true, true, false, true }
-                        AddVertexAndIndices(x+step, y+half, x+half, y+step);
-                        break;
-                    case "1100": case "0011": // { true, true, false, false }
-                         AddVertexAndIndices(x, y+half, x+step, y+half);
-                         break;
-                    case "0111": case "1000": //{ false, true, true, true }
-                        AddVertexAndIndices(x+half, y, x, y+half);
-                        break;
-                    case "0110": case "1001": //{ false, true, true, false }
-                        AddVertexAndIndices(x+half, y, x+half, y+step);
-                        break;
-                    case "0100": case "1011": //{ false, true, false, false }
-                        AddVertexAndIndices(x+half, y, x+step, y+half);
-                        break;
-                    default:
-                        break;
-                }
-            } 
-        mscript.createMeshGeometry(vertices, indices);
-    }
-
     void CreateMesh() 
     {
-        vertices.Clear();
-        indices.Clear();
-        float zstep = (float) zdim/divitions;
-        float zhalf = (float) zstep/2;
-        float step = (float) xdim/divitions;
-        float half = (float) step/2;
-        for (float x = - half; x < xdim + step; x += step)        
-            for (float y = - half; y < ydim + step; y += step)        
-                for (float z = - zhalf; z < zdim + zstep; z += zstep)          
+        _vertices.Clear();
+        _indices.Clear();
+        for (int x = -_step; x < _xdim + _step; x += _step)        
+            for (int y = -_step; y < _ydim + _step; y += _step)        
+                for (int z = -_step; z < _zdim + _step; z += _step)          
                 {   
-                    Vector3 p0 = new(x,y+step,z);
-                    Vector3 p1 = new(x+step, y+step, z);
+                    Vector3 p0 = new(x,y+_step,z);
+                    Vector3 p1 = new(x+_step, y+_step, z);
                     Vector3 p2 = new(x,y,z);
-                    Vector3 p3 = new(x+step, y, z);
-                    Vector3 p4 = new(x, y+step, z+zstep);
-                    Vector3 p5 = new(x+step, y+step, z+zstep);
-                    Vector3 p6 = new(x, y, z+zstep);
-                    Vector3 p7 = new(x+step, y, z+zstep);
+                    Vector3 p3 = new(x+_step, y, z);
+                    Vector3 p4 = new(x, y+_step, z+_step);
+                    Vector3 p5 = new(x+_step, y+_step, z+_step);
+                    Vector3 p6 = new(x, y, z+_step);
+                    Vector3 p7 = new(x+_step, y, z+_step);
 
                     DoTetras(p4, p6, p0, p7);
                     DoTetras(p6, p0, p7, p2);
@@ -270,36 +205,21 @@ public class quadScript : MonoBehaviour {
 
     float FindIso(Vector3 v)
     {
-        if (v.x < 0 || v.y < 0 || v.z < 0 || v.z > 354 || v.x > 512 || v.y > 512) return 0;
-        ushort[] pixels = _slices[(int) v.z].getPixels(); //føles litt teit at denne skal kalles unødvendig mange ganger
-        int pos = (int)v.x + (int)v.y * xdim;
+        if (v.x < 0 || v.y < 0 || v.z < 0 || v.z > 352 || v.x > 511 || v.y > 511) return 0;
+        ushort[] pixels = _slices[(int) v.z].getPixels(); //denne bør plasseres et annet sted
+        int pos = (int)v.x + (int)v.y * _xdim;
+        if (pos < 0 || pos > pixels.Length) return 0;
         return pixels[pos];
-    }
-
-    bool MatchPattern(bool[] a, bool[] b)
-    {
-        return a.SequenceEqual(b) || a.SequenceEqual(b.Select(b => !b).ToArray());
-    }
-    
-    bool IsInside(Vector3 v)
-    {
-        return FindDistance(v) < _radius;
-    }
-
-    float FindDistance(Vector3 v)
-    {
-        Vector3 center = new(xdim/2,xdim/2,xdim/2);
-        return Vector3.Distance(v, center); //Vector3.Distance(new Vector2(x,y), center) denne verdier skal brukes mot _iso
     }
 
     void AddTriangle(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 e, Vector3 f)
     {
-        vertices.Add(Normalize(Interpolate(a,b)));
-        vertices.Add(Normalize(Interpolate(c,d)));
-        vertices.Add(Normalize(Interpolate(e,f)));
-        indices.Add(vertices.Count - 3);
-        indices.Add(vertices.Count - 2);
-        indices.Add(vertices.Count - 1);
+        _vertices.Add(Normalize(Interpolate(a,b)));
+        _vertices.Add(Normalize(Interpolate(c,d)));
+        _vertices.Add(Normalize(Interpolate(e,f)));
+        _indices.Add(_vertices.Count - 3);
+        _indices.Add(_vertices.Count - 2);
+        _indices.Add(_vertices.Count - 1);
     }
 
     void AddTriangle(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 e, Vector3 f, Vector3 g, Vector3 h)
@@ -310,27 +230,13 @@ public class quadScript : MonoBehaviour {
 
     Vector3 Normalize(Vector3 a)
     {
-        a.z *= (float) xdim/zdim;
-        return a/xdim - Vec3(0.5f, 0.5f, 0.5f);
+        a.z *= (float) _xdim/_zdim;
+        return a/_xdim - Vec3(0.5f, 0.5f, 0.5f);
     }
 
     Vector3 Vec3(float x, float y, float z)
     {
         return new Vector3(x, y, z);
-    }
-
-    Vector3 Vec3(float x, float y)
-    {
-        return new Vector3(x, y);
-    }
-
-    void AddVertexAndIndices(float a, float b, float c, float d)
-    {
-        Func<float, float> normalize = (x) => x / xdim - 0.5f;
-        vertices.Add(Vec3(normalize(a),normalize(b)));
-        vertices.Add(Vec3(normalize(c),normalize(d)));
-        indices.Add(vertices.Count - 2);
-        indices.Add(vertices.Count - 1);
     }
 
     private void OnToggleValueChanged(ChangeEvent<bool> evt)
@@ -339,33 +245,33 @@ public class quadScript : MonoBehaviour {
         print("toggle: " + checkedToggle);
     }
        
-    public void slicePosSlider1Change(ChangeEvent<float> evt)
+    public void slicePosSliderIsoChange(ChangeEvent<float> evt)
     {
-        _slider1.value = evt.newValue;
+        _sliderIso.value = evt.newValue;
         _iso = evt.newValue;
     }    
     
-    public void slicePosSlider2Change(ChangeEvent<float> evt)
+    public void slicePosSliderStepsizeChange(ChangeEvent<float> evt)
     {
-        _slider2.value = evt.newValue;
-        divitions = (int) _slider2.value;
+        _sliderStepsize.value = evt.newValue;
+        _step = (int) _sliderStepsize.value;
     }
     
-    private void slicePosSliderRedChange(ChangeEvent<float> evt)
+    private void slicePosSliderLayerChange(ChangeEvent<float> evt)
     {
         int n = (int) evt.newValue;
         setTexture(_slices[n]);
     }
     
-    public void button1Pushed(ClickEvent evt)
+    public void buttonDrawPushed(ClickEvent evt)
     {
         CreateMesh(); 
-        mscript.createMeshGeometry(vertices, indices);
+        _mscript.createMeshGeometry(_vertices, _indices);  
     }
 
-    public void button2Pushed(ClickEvent evt)
+    public void buttonSavePushed(ClickEvent evt)
     {
         CreateMesh(); 
-        mscript.MeshToFile("test.obj", ref vertices, ref indices);
+        _mscript.MeshToFile("test.obj", ref _vertices, ref _indices);
     }
 }
