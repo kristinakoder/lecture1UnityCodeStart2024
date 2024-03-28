@@ -1,30 +1,21 @@
 using UnityEngine;
 using UnityEngine.UIElements;
-using System.Linq;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Data;
-using System.Diagnostics;
 
 public class quadScript : MonoBehaviour {
 
-    // Dicom har et "levende" dictionary som leses fra xml ved initDicom
-    // slices må sorteres, og det basert på en tag, men at pixeldata lesing er en separat operasjon, derfor har vi nullpeker til pixeldata
-    // dicomfile lagres slik at fil ikke må leses enda en gang når pixeldata hentes
-    
-    // member variables of quadScript, accessible from any function
     Slice[] _slices;
+    ushort[] _pixelsCurrent = new ushort[0], _pixelsNext = new ushort[0];
     int _numSlices, _minIntensity, _maxIntensity, _xdim, _ydim, _zdim, _step = 4;
 
-    float _iso = 0.8f;
-    bool checkedToggle = true;
+    float _iso = 1000f;
 
     List<Vector3> _vertices = new();
     List<int> _indices = new(); 
 
     private Button _buttonDraw, _buttonSave;
-    private Toggle _toggle;
     private Slider _sliderIso, _sliderStepsize, _sliderLayer;
 
     meshScript _mscript;
@@ -36,7 +27,6 @@ public class quadScript : MonoBehaviour {
         var uiDocument = GameObject.Find("MyUIDocument").GetComponent<UIDocument>();
         _buttonDraw = uiDocument.rootVisualElement.Q("buttonDraw") as Button;
         _buttonSave = uiDocument.rootVisualElement.Q("buttonSave") as Button;
-        _toggle = uiDocument.rootVisualElement.Q("toggle1") as Toggle;
         _sliderIso = uiDocument.rootVisualElement.Q("sliderIso") as Slider;
         _sliderStepsize = uiDocument.rootVisualElement.Q("sliderStepsize") as Slider;
         _sliderLayer = uiDocument.rootVisualElement.Q("sliderLayer") as Slider;
@@ -45,7 +35,6 @@ public class quadScript : MonoBehaviour {
         _sliderIso.RegisterValueChangedCallback(slicePosSliderIsoChange);
         _sliderStepsize.RegisterValueChangedCallback(slicePosSliderStepsizeChange);
         _sliderLayer.RegisterValueChangedCallback(slicePosSliderLayerChange);
-        _toggle.RegisterValueChangedCallback(OnToggleValueChanged);
         _texture = new Texture2D(512, 512, TextureFormat.RGB24, false);
 
         Slice.initDicom();
@@ -55,7 +44,8 @@ public class quadScript : MonoBehaviour {
         _slices = processSlices(dicomfilepath);     // loads slices from the folder above
         _xdim = _slices[0].sliceInfo.Rows;
         _ydim = _slices[0].sliceInfo.Columns;
-        _zdim = _slices.Length;           
+        _zdim = _slices.Length;  
+        _pixelsNext = _slices[0].getPixels();     
 
         _mscript = GameObject.Find("GameObjectMesh").GetComponent<meshScript>();
     }
@@ -76,9 +66,6 @@ public class quadScript : MonoBehaviour {
             SliceInfo info = slices[i].sliceInfo;
             if (info.LargestImagePixelValue > max) max = info.LargestImagePixelValue;
             if (info.SmallestImagePixelValue < min) min = info.SmallestImagePixelValue;
-            // Del dataen på max før den settes inn i tekstur
-            // alternativet er å dele på 2^dicombitdepth,  men det ville blitt 4096 i dette tilfelle
-
         }
 
         _minIntensity = (int)min;
@@ -96,51 +83,68 @@ public class quadScript : MonoBehaviour {
         for (int y = 0; y < _ydim; y++)
             for (int x = 0; x < _xdim; x++)
             {
-                float val = pixelval(new Vector2(x, y), _xdim, pixels);
-                float v = (val-_minIntensity) / _maxIntensity;      // maps [_minIntensity,_maxIntensity] to [0,1] , i.e.  _minIntensity to black and _maxIntensity to white
+                float val = pixelval(new Vector2(x, y), pixels);
+                float v = (val-_minIntensity) / _maxIntensity;
                 _texture.SetPixel(x, y, new UnityEngine.Color(v, v, v));
             }
 
-        _texture.filterMode = FilterMode.Point;  // nearest neigbor interpolation is used.  (alternative is FilterMode.Bilinear)
-        _texture.Apply();  // Apply all SetPixel calls
+        _texture.filterMode = FilterMode.Point; 
+        _texture.Apply();
         GetComponent<Renderer>().material.mainTexture = _texture;
     }
  
-    ushort pixelval(Vector2 p, int xdim, ushort[] pixels)
+    ushort pixelval(Vector2 p, ushort[] pixels)
     {
-        return pixels[(int)p.x + (int)p.y * xdim];
+        return pixels[(int) p.x + (int) p.y * _xdim];
+    }
+
+    Vector4 GetPointAndValue(int x, int y, int z, ushort[] pixels)
+    {
+        Vector4 p = new(x,y,z);
+        if (pixels.Length == 0) return p;
+        if (x < 0 || y < 0 || x >= _xdim || y >= _ydim) return p;
+        p.w = pixels[x+y*_xdim];
+        return p;
     }
 
     void CreateMesh() 
     {
         _vertices.Clear();
         _indices.Clear();
-        for (int x = -_step; x < _xdim + _step; x += _step)        
-            for (int y = -_step; y < _ydim + _step; y += _step)        
-                for (int z = -_step; z < _zdim + _step; z += _step)          
-                {   
-                    Vector3 p0 = new(x,y+_step,z);
-                    Vector3 p1 = new(x+_step, y+_step, z);
-                    Vector3 p2 = new(x,y,z);
-                    Vector3 p3 = new(x+_step, y, z);
-                    Vector3 p4 = new(x, y+_step, z+_step);
-                    Vector3 p5 = new(x+_step, y+_step, z+_step);
-                    Vector3 p6 = new(x, y, z+_step);
-                    Vector3 p7 = new(x+_step, y, z+_step);
+        for (int z = -_step; z < _zdim + _step; z += _step)
+        {   
+            if (z >= 0 && z + _step < _zdim)
+            {
+                _pixelsCurrent = _pixelsNext;
+                _pixelsNext = _slices[z+_step].getPixels();
+            }
+            if (z + _step > _zdim) _pixelsNext = new ushort[0];
 
-                    DoTetras(p4, p6, p0, p7);
-                    DoTetras(p6, p0, p7, p2);
-                    DoTetras(p0, p7, p2, p3);
-                    DoTetras(p4, p5, p7, p0);
-                    DoTetras(p1, p7, p0, p3);
-                    DoTetras(p0, p5, p7, p1);
-                }
-        
+            for (int x = -_step; x < _xdim + _step; x += _step)        
+                for (int y = -_step; y < _ydim + _step; y += _step)        
+                    {   
+                        Vector4 p0 = GetPointAndValue(x, y+_step, z, _pixelsCurrent);
+                        Vector4 p1 = GetPointAndValue(x+_step, y+_step, z, _pixelsCurrent);
+                        Vector4 p2 = GetPointAndValue(x, y, z, _pixelsCurrent);
+                        Vector4 p3 = GetPointAndValue(x+_step, y, z, _pixelsCurrent);
+                        Vector4 p4 = GetPointAndValue(x, y+_step, z+_step, _pixelsNext);
+                        Vector4 p5 = GetPointAndValue(x+_step, y+_step, z+_step, _pixelsNext);
+                        Vector4 p6 = GetPointAndValue(x, y, z+_step, _pixelsNext);
+                        Vector4 p7 = GetPointAndValue(x+_step, y, z+_step, _pixelsNext);
+
+                        DoTetras(p4, p6, p0, p7);
+                        DoTetras(p6, p0, p7, p2);
+                        DoTetras(p0, p7, p2, p3);
+                        DoTetras(p4, p5, p7, p0);
+                        DoTetras(p1, p7, p0, p3);
+                        DoTetras(p0, p5, p7, p1);
+                    }
+        }
     }
 
-    void DoTetras(Vector3 v1, Vector3 v2, Vector3 v3, Vector3 v4)
+    void DoTetras(Vector4 v1, Vector4 v2, Vector4 v3, Vector4 v4)
     {
-        string pattern = (UnderIso(v1) ? "1" : "0") + (UnderIso(v2) ? "1" : "0") + (UnderIso(v3) ? "1" : "0") + (UnderIso(v4) ? "1" : "0");
+        string pattern = (v1.w < _iso ? "1" : "0") + (v2.w < _iso ? "1" : "0") + (v3.w < _iso ? "1" : "0") + (v4.w < _iso ? "1" : "0");
         
         switch(pattern)
         {
@@ -191,28 +195,13 @@ public class quadScript : MonoBehaviour {
         }
     }
 
-    Vector3 Interpolate(Vector3 a, Vector3 b)
+    Vector3 Interpolate(Vector4 a, Vector4 b)
     {
-        float v1 = FindIso(a), v2 = FindIso(b);
-        float weight = Mathf.Abs(_iso - v1) / Mathf.Abs(v1-v2);
+        float weight = Mathf.Abs(_iso - a.w) / Mathf.Abs(a.w-b.w);
         return Vector3.Lerp(a,b,weight);
     }
 
-    bool UnderIso(Vector3 v)
-    {
-        return FindIso(v) < _iso;
-    }
-
-    float FindIso(Vector3 v)
-    {
-        if (v.x < 0 || v.y < 0 || v.z < 0 || v.z > 352 || v.x > 511 || v.y > 511) return 0;
-        ushort[] pixels = _slices[(int) v.z].getPixels(); //denne bør plasseres et annet sted
-        int pos = (int)v.x + (int)v.y * _xdim;
-        if (pos < 0 || pos > pixels.Length) return 0;
-        return pixels[pos];
-    }
-
-    void AddTriangle(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 e, Vector3 f)
+    void AddTriangle(Vector4 a, Vector4 b, Vector4 c, Vector4 d, Vector4 e, Vector4 f)
     {
         _vertices.Add(Normalize(Interpolate(a,b)));
         _vertices.Add(Normalize(Interpolate(c,d)));
@@ -222,7 +211,7 @@ public class quadScript : MonoBehaviour {
         _indices.Add(_vertices.Count - 1);
     }
 
-    void AddTriangle(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 e, Vector3 f, Vector3 g, Vector3 h)
+    void AddTriangle(Vector4 a, Vector4 b, Vector4 c, Vector4 d, Vector4 e, Vector4 f, Vector4 g, Vector4 h)
     {
         AddTriangle(a, b, c, d, e, f);
         AddTriangle(a, b, e, f, g, h);  
@@ -238,12 +227,6 @@ public class quadScript : MonoBehaviour {
     {
         return new Vector3(x, y, z);
     }
-
-    private void OnToggleValueChanged(ChangeEvent<bool> evt)
-    {
-        checkedToggle = evt.newValue;
-        print("toggle: " + checkedToggle);
-    }
        
     public void slicePosSliderIsoChange(ChangeEvent<float> evt)
     {
@@ -254,7 +237,7 @@ public class quadScript : MonoBehaviour {
     public void slicePosSliderStepsizeChange(ChangeEvent<float> evt)
     {
         _sliderStepsize.value = evt.newValue;
-        _step = (int) _sliderStepsize.value;
+        _step = (int) _sliderStepsize.value;  
     }
     
     private void slicePosSliderLayerChange(ChangeEvent<float> evt)
